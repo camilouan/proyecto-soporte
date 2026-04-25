@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 
 
+# Rutas base del proyecto. Se calculan desde app.py para que funcionen igual
+# en local y en Render sin depender de la carpeta desde donde se ejecute Python.
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 PLOT_DIR = STATIC_DIR / "plots"
@@ -23,6 +25,8 @@ TEMPLATE_DIR = BASE_DIR / "templates"
 DATA_DIR = BASE_DIR / "data"
 DATASET_PATH = DATA_DIR / "support_tickets_bogota.csv"
 
+# Constantes del dominio: dias, zonas, prioridades y reglas usadas para
+# construir un dataset realista cuando el CSV aun no existe.
 DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
 DAY_COLORS = {
     "Lunes": "#2F80ED",
@@ -74,10 +78,13 @@ CHANNELS = ["Portal", "Correo", "Teléfono", "Chat"]
 MAP_MAX_POINTS = 220
 MODEL_SAMPLE_X = 15
 
+# Configuracion de logs para ver en consola o Render que esta haciendo la app.
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
+# Equivalencias y centroides locales de localidades. Se usan para ubicar puntos
+# del mapa sin bloquear el arranque del servidor con una descarga externa.
 ZONE_NAME_MAP = {
     "Suba": "Suba",
     "Engativá": "Engativa",
@@ -98,16 +105,25 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "proyecto-electiva-secret")
 
 
 def _normalize_name(value: str) -> str:
+    """Convierte nombres con tildes a una forma comparable y en minusculas."""
     normalized = unicodedata.normalize("NFKD", value)
     return "".join(char for char in normalized if not unicodedata.combining(char)).strip().lower()
 
 
 def weekday_name(input_date: date) -> str:
+    """Devuelve el nombre del dia de la semana en espanol para una fecha."""
     names = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
     return names[input_date.weekday()]
 
 
 def create_realistic_dataset(seed: int = 22, total_days: int = 60) -> pd.DataFrame:
+    """Crea datos sinteticos pero coherentes para soporte tecnico en Bogota.
+
+    Cada fila representa un registro de atencion con fecha, localidad,
+    categoria, prioridad, canal, numero de tickets y tiempo de respuesta.
+    Las reglas de demora hacen que el tiempo suba cuando hay mas carga,
+    ciertos dias o ciertas zonas.
+    """
     rng = np.random.default_rng(seed)
     start_date = date.today() - timedelta(days=total_days)
     rows: list[dict[str, object]] = []
@@ -170,6 +186,7 @@ def create_realistic_dataset(seed: int = 22, total_days: int = 60) -> pd.DataFra
 
 
 def load_or_create_dataset() -> pd.DataFrame:
+    """Carga el CSV principal o lo genera si el archivo no existe."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     if DATASET_PATH.exists():
@@ -185,6 +202,7 @@ def load_or_create_dataset() -> pd.DataFrame:
 
 
 def build_dataset(seed: int = 7, records_per_day: int = 10) -> pd.DataFrame:
+    """Construye un dataset pequeno de respaldo para pruebas o demostraciones."""
     rng = np.random.default_rng(seed)
     rows: list[dict[str, object]] = []
 
@@ -216,10 +234,12 @@ def build_dataset(seed: int = 7, records_per_day: int = 10) -> pd.DataFrame:
 
 
 def ensure_directories() -> None:
+    """Garantiza que exista la carpeta donde se guardan las graficas."""
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def save_bar_chart(data: pd.DataFrame) -> str:
+    """Genera la grafica de barras con tiempo promedio por dia."""
     averages = data.groupby("dia", observed=False)["tiempo"].mean().reindex(DAYS)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -255,6 +275,7 @@ def save_bar_chart(data: pd.DataFrame) -> str:
 
 
 def save_scatter_chart(data: pd.DataFrame) -> str:
+    """Genera la dispersion tickets-tiempo y dibuja la tendencia lineal."""
     fig, ax = plt.subplots(figsize=(10, 5))
 
     for day in DAYS:
@@ -288,6 +309,7 @@ def save_scatter_chart(data: pd.DataFrame) -> str:
 
 
 def save_category_chart(data: pd.DataFrame) -> str:
+    """Genera la grafica de tiempo promedio por categoria de incidencia."""
     category_avg = data.groupby("categoria", observed=False)["tiempo"].mean().sort_values(ascending=False)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -323,6 +345,7 @@ def save_category_chart(data: pd.DataFrame) -> str:
 
 
 def save_trend_chart(data: pd.DataFrame) -> str:
+    """Genera una serie temporal con promedio diario y media movil de 7 dias."""
     trend = data.groupby("fecha", observed=False)["tiempo"].mean().reset_index()
     trend["fecha"] = pd.to_datetime(trend["fecha"])
     trend["rolling"] = trend["tiempo"].rolling(window=7, min_periods=1).mean()
@@ -346,6 +369,7 @@ def save_trend_chart(data: pd.DataFrame) -> str:
 
 
 def save_map_chart(data: pd.DataFrame) -> str:
+    """Genera un mapa estatico simple con latitud, longitud y tiempo."""
     fig, ax = plt.subplots(figsize=(10, 6))
     scatter = ax.scatter(
         data["lon"],
@@ -375,10 +399,13 @@ def save_map_chart(data: pd.DataFrame) -> str:
     return str(output.relative_to(STATIC_DIR).as_posix())
 
 
+# Dataset global: se carga una vez al iniciar la aplicacion y luego las rutas
+# filtran sobre esta copia base.
 DATA = load_or_create_dataset()
 
 
 def build_summary(data: pd.DataFrame) -> dict[str, object]:
+    """Calcula indicadores principales para tarjetas, conclusiones y modelo."""
     corr = float(data["tickets"].corr(data["tiempo"]))
     slope, intercept = np.polyfit(data["tickets"], data["tiempo"], 1)
 
@@ -419,6 +446,7 @@ def build_summary(data: pd.DataFrame) -> dict[str, object]:
 
 
 def build_quality_report(data: pd.DataFrame) -> dict[str, object]:
+    """Evalua calidad de datos: nulos, duplicados, invalidos y outliers."""
     null_cells = int(data.isna().sum().sum())
     duplicate_ids = int(data.duplicated(subset=["ticket_id"]).sum()) if "ticket_id" in data.columns else 0
     invalid_ticket_rows = int((data["tickets"] <= 0).sum()) if "tickets" in data.columns else 0
@@ -449,6 +477,7 @@ def build_quality_report(data: pd.DataFrame) -> dict[str, object]:
 
 
 def build_model_diagnostics(data: pd.DataFrame) -> dict[str, object]:
+    """Compara modelo lineal contra polinomico grado 2 usando RMSE."""
     x = data["tickets"].astype(float).to_numpy()
     y = data["tiempo"].astype(float).to_numpy()
     if len(x) < 3:
@@ -482,6 +511,7 @@ def build_model_diagnostics(data: pd.DataFrame) -> dict[str, object]:
 
 
 def apply_filters(data: pd.DataFrame, params: dict[str, str]) -> pd.DataFrame:
+    """Aplica filtros enviados por query string sobre el DataFrame base."""
     filtered = data.copy()
 
     zone = params.get("zona", "")
@@ -511,6 +541,7 @@ def apply_filters(data: pd.DataFrame, params: dict[str, str]) -> pd.DataFrame:
 
 
 def get_filter_options(data: pd.DataFrame) -> dict[str, list[str]]:
+    """Obtiene las opciones disponibles para llenar los selects del formulario."""
     return {
         "zonas": sorted(data["zona"].dropna().unique().tolist()),
         "prioridades": sorted(data["prioridad"].dropna().unique().tolist()),
@@ -521,6 +552,7 @@ def get_filter_options(data: pd.DataFrame) -> dict[str, list[str]]:
 
 
 def _get_current_filters() -> dict[str, str]:
+    """Lee los filtros actuales desde la URL y normaliza espacios."""
     return {
         "zona": request.args.get("zona", "").strip(),
         "prioridad": request.args.get("prioridad", "").strip(),
@@ -533,6 +565,7 @@ def _get_current_filters() -> dict[str, str]:
 
 
 def _resolve_filtered_data() -> tuple[pd.DataFrame, dict[str, str], bool, str]:
+    """Devuelve datos filtrados y maneja rangos invalidos o filtros sin resultados."""
     filters = _get_current_filters()
     if (
         filters.get("fecha_inicio")
@@ -551,6 +584,7 @@ def _resolve_filtered_data() -> tuple[pd.DataFrame, dict[str, str], bool, str]:
 
 
 def build_map_sample(data: pd.DataFrame, max_points: int = MAP_MAX_POINTS) -> pd.DataFrame:
+    """Reduce los puntos del mapa manteniendo representacion por zona."""
     if len(data) <= max_points:
         return data.copy()
 
@@ -581,6 +615,7 @@ def build_map_sample(data: pd.DataFrame, max_points: int = MAP_MAX_POINTS) -> pd
 
 @app.route("/")
 def home():
+    """Renderiza el dashboard principal con filtros, metricas y graficas."""
     active_data, active_filters, fallback_used, fallback_message = _resolve_filtered_data()
     summary = build_summary(active_data)
     map_data = build_map_sample(active_data)
@@ -696,6 +731,7 @@ def home():
 
 @app.route("/export/filtered.csv")
 def export_filtered_csv():
+    """Exporta el subconjunto filtrado como CSV descargable."""
     try:
         filtered, filters, _, _ = _resolve_filtered_data()
         output = io.StringIO()
@@ -716,6 +752,7 @@ def export_filtered_csv():
 
 @app.route("/export/summary.xlsx")
 def export_summary_excel():
+    """Exporta el subconjunto filtrado y su resumen en un archivo Excel."""
     try:
         filtered, _, _, _ = _resolve_filtered_data()
         summary = build_summary(filtered)
@@ -741,6 +778,7 @@ def export_summary_excel():
 
 @app.route("/export/report.pdf")
 def export_report_pdf():
+    """Genera un PDF ejecutivo con los principales resultados filtrados."""
     try:
         filtered, _, _, _ = _resolve_filtered_data()
         summary = build_summary(filtered)
@@ -786,6 +824,7 @@ def export_report_pdf():
 
 @app.route("/health")
 def health():
+    """Endpoint liviano para comprobar que el servidor esta vivo."""
     return {"status": "ok"}
 
 

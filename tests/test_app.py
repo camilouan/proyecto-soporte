@@ -9,11 +9,15 @@ import app  # noqa: E402
 
 
 class AppTestCase(unittest.TestCase):
+    """Pruebas basicas para confirmar que el dashboard y sus exportables viven."""
+
     def setUp(self):
+        """Prepara un cliente Flask de prueba y una copia del dataset global."""
         self.client = app.app.test_client()
         self.data = app.DATA.copy()
 
     def test_dataset_has_required_columns(self):
+        """Verifica que el CSV tenga las columnas minimas que usa la app."""
         required = {
             "ticket_id",
             "fecha",
@@ -31,6 +35,7 @@ class AppTestCase(unittest.TestCase):
         self.assertGreater(len(self.data), 0)
 
     def test_filters_reduce_or_equal_dataset(self):
+        """Comprueba que los filtros no aumenten registros y respeten la zona."""
         params = {
             "zona": "Kennedy",
             "prioridad": "Alta",
@@ -46,11 +51,13 @@ class AppTestCase(unittest.TestCase):
             self.assertTrue((filtered["zona"] == "Kennedy").all())
 
     def test_summary_contains_core_metrics(self):
+        """Confirma que el resumen estadistico entregue las metricas centrales."""
         summary = app.build_summary(self.data)
         for key in ["corr", "slope", "intercept", "avg_by_day", "zone_summary"]:
             self.assertIn(key, summary)
 
     def test_home_and_exports_status(self):
+        """Valida que la pagina principal y las tres exportaciones respondan."""
         self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/export/filtered.csv").status_code, 200)
         self.assertEqual(self.client.get("/export/summary.xlsx").status_code, 200)

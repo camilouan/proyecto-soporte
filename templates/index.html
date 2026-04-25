@@ -1388,6 +1388,8 @@
   </div>
 
   <script>
+    // Elementos principales de la seccion de graficas: botones, paneles y datos
+    // que Flask envia desde Python convertidos a JSON para usarlos en el navegador.
     const buttons = document.querySelectorAll('.chart-switcher button');
     const panels = document.querySelectorAll('.chart-panel');
     const tickets = {{ map_data | tojson }};
@@ -1397,6 +1399,8 @@
     let bogotaLayer;
     let mapReady = false;
 
+    // Relaciona nombres con y sin tilde para que los datos del CSV coincidan
+    // con los nombres que trae el GeoJSON de localidades.
     const zoneAliases = {
       engativa: 'engativa',
       'engativá': 'engativa',
@@ -1408,6 +1412,7 @@
     };
 
     function normalizeText(value) {
+      // Normaliza textos para comparar zonas aunque tengan tildes o mayusculas.
       return value
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
@@ -1416,6 +1421,7 @@
     }
 
     function getZoneAverages() {
+      // Agrupa todos los registros por localidad y calcula su tiempo promedio.
       const grouped = {};
       allRows.forEach((ticket) => {
         const zoneName = normalizeText(ticket.zona);
@@ -1435,6 +1441,7 @@
     }
 
     function getChoroplethColor(value) {
+      // Asigna color a cada localidad segun su tiempo promedio de atencion.
       if (value == null) return '#6b7280';
       if (value >= 50) return '#b4233f';
       if (value >= 44) return '#e25555';
@@ -1444,6 +1451,7 @@
     }
 
     function addLegendControl() {
+      // Crea la leyenda del mapa con los rangos de minutos y sus colores.
       const legend = L.control({ position: 'bottomright' });
       legend.onAdd = function () {
         const div = L.DomUtil.create('div', 'map-legend leaflet-control');
@@ -1467,6 +1475,7 @@
     }
 
     function getLocalityCenters(geojson) {
+      // Calcula el centro visual de cada localidad usando sus limites geograficos.
       const centers = {};
 
       (geojson.features || []).forEach((feature) => {
@@ -1483,6 +1492,7 @@
     }
 
     function buildTicketPosition(center, index, ticket) {
+      // Separa un poco los puntos alrededor del centro para evitar que se tapen.
       const angle = ((index * 47) % 360) * (Math.PI / 180);
       const radius = 0.0014 + ((ticket.tickets % 6) * 0.00025);
       return {
@@ -1492,6 +1502,7 @@
     }
 
     function drawTicketMarkers(localityCenters) {
+      // Dibuja cada ticket como circulo: mayor tiempo implica punto mas grande.
       tickets.forEach((ticket, index) => {
         const zoneName = normalizeText(ticket.zona);
         const key = zoneAliases[zoneName] || zoneName;
@@ -1518,6 +1529,7 @@
     }
 
     function activatePanel(target) {
+      // Cambia la grafica visible y carga el mapa solo cuando el usuario lo abre.
       buttons.forEach((button) => {
         button.classList.toggle('is-active', button.dataset.target === target);
       });
@@ -1538,6 +1550,7 @@
     }
 
     function initBogotaMap() {
+      // Inicializa Leaflet una sola vez para no recrear el mapa en cada cambio.
       if (mapReady || !window.L) {
         return;
       }
@@ -1562,6 +1575,7 @@
       fetch(bogotaGeoJsonUrl)
         .then((response) => response.json())
         .then((geojson) => {
+          // Pinta el mapa por localidades y luego superpone los tickets.
           const localityCenters = getLocalityCenters(geojson);
           bogotaLayer = L.geoJSON(geojson, {
             pane: 'zonesPane',
@@ -1594,6 +1608,7 @@
           }
         })
         .catch(() => {
+          // Si el GeoJSON remoto falla, al menos se muestran los puntos disponibles.
           L.popup()
             .setLatLng([4.65, -74.10])
             .setContent('No se pudo cargar el GeoJSON de Bogotá desde GitHub.')
@@ -1606,10 +1621,12 @@
     }
 
     buttons.forEach((button) => {
+      // Conecta cada boton con su panel correspondiente.
       button.addEventListener('click', () => activatePanel(button.dataset.target));
     });
 
     if (document.querySelector('[data-panel="map"]').classList.contains('is-active')) {
+      // Si el mapa aparece activo desde el inicio, se inicializa inmediatamente.
       initBogotaMap();
     }
   </script>
