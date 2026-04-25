@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import io
 import json
 import logging
@@ -416,47 +415,6 @@ def save_map_chart(data: pd.DataFrame) -> str:
     return str(output.relative_to(STATIC_DIR).as_posix())
 
 
-def _safe_suffix(value: str) -> str:
-    digest = hashlib.md5(value.encode("utf-8")).hexdigest()[:10]
-    return digest
-
-
-def create_chart_bundle(data: pd.DataFrame, chart_key: str) -> dict[str, str]:
-    ensure_directories()
-    bundle_id = _safe_suffix(chart_key)
-
-    original_bar = PLOT_DIR / "tiempo_por_dia.png"
-    original_scatter = PLOT_DIR / "tickets_vs_tiempo.png"
-    original_category = PLOT_DIR / "tiempo_por_categoria.png"
-    original_trend = PLOT_DIR / "tendencia_tiempo.png"
-
-    bar_file = PLOT_DIR / f"tiempo_por_dia_{bundle_id}.png"
-    scatter_file = PLOT_DIR / f"tickets_vs_tiempo_{bundle_id}.png"
-    category_file = PLOT_DIR / f"tiempo_por_categoria_{bundle_id}.png"
-    trend_file = PLOT_DIR / f"tendencia_tiempo_{bundle_id}.png"
-
-    save_bar_chart(data)
-    save_scatter_chart(data)
-    save_category_chart(data)
-    save_trend_chart(data)
-
-    if original_bar.exists():
-        original_bar.replace(bar_file)
-    if original_scatter.exists():
-        original_scatter.replace(scatter_file)
-    if original_category.exists():
-        original_category.replace(category_file)
-    if original_trend.exists():
-        original_trend.replace(trend_file)
-
-    return {
-        "bar": str(bar_file.relative_to(STATIC_DIR).as_posix()),
-        "scatter": str(scatter_file.relative_to(STATIC_DIR).as_posix()),
-        "category": str(category_file.relative_to(STATIC_DIR).as_posix()),
-        "trend": str(trend_file.relative_to(STATIC_DIR).as_posix()),
-    }
-
-
 DATA = load_or_create_dataset()
 
 
@@ -668,7 +626,12 @@ def home():
     map_data = build_map_sample(active_data)
     quality_report = build_quality_report(active_data)
     model_diagnostics = build_model_diagnostics(active_data)
-    chart_bundle = create_chart_bundle(active_data, json.dumps(active_filters, ensure_ascii=False))
+    charts = {
+        "bar": save_bar_chart(active_data),
+        "scatter": save_scatter_chart(active_data),
+        "category": save_category_chart(active_data),
+        "trend": save_trend_chart(active_data),
+    }
 
     dataset_profile = {
         "rows": int(len(DATA)),
@@ -767,7 +730,7 @@ def home():
         summary=summary,
         insights=insights,
         model=model,
-        charts=chart_bundle,
+        charts=charts,
     )
 
 
