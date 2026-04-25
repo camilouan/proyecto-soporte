@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Proyecto integrador: soporte técnico
 
 Aplicación Flask lista para presentar y desplegar en Render. Analiza cómo la cantidad de tickets impacta el tiempo de respuesta en soporte técnico usando un dataset CSV realista, visualizaciones y modelo matemático ajustado.
@@ -47,3 +48,6 @@ gunicorn app:app
 - `static/plots/`: imágenes generadas automáticamente.
 - `requirements.txt`: dependencias.
 - `Procfile` y `render.yaml`: despliegue.
+=======
+# proyecto-soporte
+>>>>>>> 0deb7eb5bc1b757e2559dfdac4e3f668fc9ed22f
