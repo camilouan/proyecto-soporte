@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import io
-import json
 import logging
 import os
 import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
-from urllib.request import urlopen
 
 import matplotlib
 import numpy as np
@@ -80,13 +78,19 @@ LOG_FORMAT = "%(asctime)s | %(levelname)s | %(message)s"
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
 logger = logging.getLogger(__name__)
 
-BOGOTA_GEOJSON_URL = "https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/bogota.geojson"
 ZONE_NAME_MAP = {
     "Suba": "Suba",
     "Engativá": "Engativa",
     "Chapinero": "Chapinero",
     "Usaquén": "Usaquen",
     "Kennedy": "Kennedy",
+}
+BOGOTA_CENTROIDS = {
+    "chapinero": (4.643856, -74.039600),
+    "engativa": (4.708040, -74.124945),
+    "kennedy": (4.627220, -74.158625),
+    "suba": (4.795879, -74.089860),
+    "usaquen": (4.741166, -74.026212),
 }
 
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR), static_folder=str(STATIC_DIR))
@@ -96,50 +100,6 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "proyecto-electiva-secret")
 def _normalize_name(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     return "".join(char for char in normalized if not unicodedata.combining(char)).strip().lower()
-
-
-def _extract_points(coordinates: object) -> list[tuple[float, float]]:
-    points: list[tuple[float, float]] = []
-
-    def walk(node: object) -> None:
-        if isinstance(node, list) and node:
-            first = node[0]
-            if isinstance(first, (int, float)) and len(node) >= 2:
-                points.append((float(node[0]), float(node[1])))
-            else:
-                for item in node:
-                    walk(item)
-
-    walk(coordinates)
-    return points
-
-
-def load_bogota_centroids() -> dict[str, tuple[float, float]]:
-    try:
-        with urlopen(BOGOTA_GEOJSON_URL, timeout=10) as response:
-            geojson = json.load(response)
-    except Exception:
-        return {}
-
-    centroids: dict[str, tuple[float, float]] = {}
-    for feature in geojson.get("features", []):
-        properties = feature.get("properties", {})
-        name = properties.get("name", "")
-        points = _extract_points(feature.get("geometry", {}).get("coordinates", []))
-        if not name or not points:
-            continue
-
-        latitudes = [point[1] for point in points]
-        longitudes = [point[0] for point in points]
-        centroids[_normalize_name(name)] = (
-            float(sum(latitudes) / len(latitudes)),
-            float(sum(longitudes) / len(longitudes)),
-        )
-
-    return centroids
-
-
-BOGOTA_CENTROIDS = load_bogota_centroids()
 
 
 def weekday_name(input_date: date) -> str:
