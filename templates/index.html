@@ -1197,6 +1197,64 @@
       </div>
     </section>
 
+    <section class="section" id="ai-insights">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">IA & Recomendaciones</h2>
+          <p>Resultados generados por los módulos de IA: predicciones, detección de anomalías, análisis estadístico y recomendaciones automáticas.</p>
+        </div>
+        <div class="chips">
+          <span class="chip">Predicciones</span>
+          <span class="chip">Anomalías</span>
+          <span class="chip">Recomendaciones</span>
+        </div>
+      </div>
+
+      <div class="story-grid">
+        <div class="story-card">
+          <h3>Resumen (renderizado en servidor)</h3>
+          {% if prediction and prediction.error %}
+            <div class="alert error">Error en predicción: {{ prediction.error }}</div>
+          {% else %}
+            <p class="hero-copy">Predicción rápida: {% if prediction and prediction.get('predicted_times') %}{{ prediction.predicted_times }}{% else %}No disponible{% endif %}</p>
+          {% endif %}
+
+          <h4>Anomalías detectadas</h4>
+          {% if anomalies and anomalies.get('anomaly_details') %}
+            <ul>
+              {% for a in anomalies.anomaly_details %}
+                <li><strong>{{ a.ticket_id }}</strong> — {{ a.tickets }} tickets — {{ a.tiempo }} min — {{ a.reason }}</li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="footer-note">No se detectaron anomalías o el análisis no está disponible.</p>
+          {% endif %}
+
+          <h4>Recomendaciones</h4>
+          {% if recommendations %}
+            <ol>
+              {% for r in recommendations %}
+                <li><strong>{{ r.title }}</strong>: {{ r.description }} <em>({{ r.priority }})</em></li>
+              {% endfor %}
+            </ol>
+          {% else %}
+            <p class="footer-note">No hay recomendaciones disponibles.</p>
+          {% endif %}
+        </div>
+
+        <div class="story-card">
+          <h3>Panel dinámico (fetch a /api/full-ai-report)</h3>
+          <p class="footer-note">Carga bajo demanda información completa de IA. Útil para no ejecutar análisis pesados en cada render.</p>
+          <div style="margin:12px 0">
+            <button id="ai-refresh" class="btn">Cargar reporte IA</button>
+          </div>
+          <div id="ai-dynamic" class="story-list">
+            <div id="ai-dynamic-content" class="mini-card"><small>Estado</small><strong id="ai-status">En espera</strong><span>Pulse "Cargar reporte IA" para iniciar.</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="section">
       <div class="section-head">
         <div>
@@ -1388,6 +1446,63 @@
   </div>
 
   <script>
+    // Panel dinámico: consulta /api/full-ai-report y renderiza resultados
+    async function loadAiReport() {
+      const statusEl = document.getElementById('ai-status');
+      const container = document.getElementById('ai-dynamic-content');
+      statusEl.textContent = 'Cargando...';
+      try {
+        const resp = await fetch('/api/full-ai-report');
+        if (!resp.ok) throw new Error('Respuesta no OK: ' + resp.status);
+        const data = await resp.json();
+        statusEl.textContent = 'OK';
+
+        // Construir HTML simple
+        const html = [];
+        html.push('<small>Timestamp</small><strong>' + (data.timestamp || '-') + '</strong>');
+        html.push('<div style="margin-top:8px"><small>Dataset size</small><strong>' + (data.dataset_size || 0) + '</strong></div>');
+
+        if (data.predictions) {
+          html.push('<h4>Predicciones</h4>');
+          html.push('<pre style="white-space:pre-wrap;">' + JSON.stringify(data.predictions, null, 2) + '</pre>');
+        }
+
+        if (data.anomalies) {
+          html.push('<h4>Anomalías</h4>');
+          const details = data.anomalies.anomaly_details || [];
+          if (details.length === 0) html.push('<p class="footer-note">Sin anomalías.</p>');
+          else {
+            html.push('<ul>');
+            details.slice(0,10).forEach(a => html.push('<li><strong>' + (a.ticket_id||'') + '</strong> — ' + (a.tickets||'') + ' tickets — ' + (a.tiempo||'') + ' min</li>'));
+            html.push('</ul>');
+          }
+        }
+
+        if (data.analytics) {
+          html.push('<h4>Analytics</h4>');
+          html.push('<pre style="white-space:pre-wrap;">' + JSON.stringify(data.analytics, null, 2) + '</pre>');
+        }
+
+        if (data.recommendations) {
+          html.push('<h4>Recomendaciones</h4>');
+          html.push('<ol>');
+          (data.recommendations||[]).forEach(r => html.push('<li><strong>' + (r.title||'') + '</strong>: ' + (r.description||'') + ' <em>(' + (r.priority||'') + ')</em></li>'));
+          html.push('</ol>');
+        }
+
+        container.innerHTML = html.join('\n');
+      } catch (err) {
+        statusEl.textContent = 'Error';
+        container.innerHTML = '<div class="alert error">Error cargando IA: ' + String(err) + '</div>';
+        console.error(err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function(){
+      const btn = document.getElementById('ai-refresh');
+      if (btn) btn.addEventListener('click', loadAiReport);
+    });
+
     // Elementos principales de la seccion de graficas: botones, paneles y datos
     // que Flask envia desde Python convertidos a JSON para usarlos en el navegador.
     const buttons = document.querySelectorAll('.chart-switcher button');
