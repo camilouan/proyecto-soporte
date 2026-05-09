@@ -16,26 +16,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 
-# Machine Learning e IA (imports opcionales para entornos donde no estén instaladas)
-SKLEARN_AVAILABLE = True
-SCIPY_AVAILABLE = True
-try:
-    from sklearn.ensemble import IsolationForest
-    from sklearn.linear_model import LinearRegression
-    from sklearn.preprocessing import StandardScaler
-except Exception:
-    SKLEARN_AVAILABLE = False
-    IsolationForest = None
-    LinearRegression = None
-    StandardScaler = None
-
-try:
-    from scipy.stats import pearsonr, spearmanr, f_oneway
-except Exception:
-    SCIPY_AVAILABLE = False
-    pearsonr = spearmanr = f_oneway = None
-
-
 # Rutas base del proyecto. Se calculan desde app.py para que funcionen igual
 # en local y en Render sin depender de la carpeta desde donde se ejecute Python.
 BASE_DIR = Path(__file__).resolve().parent
@@ -545,6 +525,8 @@ def predict_response_time(data: pd.DataFrame, ticket_values: list[int] | None = 
     Retorna predicciones para diferentes volúmenes de tickets.
     """
     try:
+        from sklearn.linear_model import LinearRegression
+
         x = data["tickets"].values.reshape(-1, 1)
         y = data["tiempo"].values
 
@@ -583,6 +565,9 @@ def detect_anomalies(data: pd.DataFrame, contamination: float = 0.05) -> dict[st
     Identifica tickets con tiempos inusualmente altos/bajos respecto a su volumen.
     """
     try:
+        from sklearn.ensemble import IsolationForest
+        from sklearn.preprocessing import StandardScaler
+
         x = data[["tickets", "tiempo"]].values
         scaler = StandardScaler()
         x_scaled = scaler.fit_transform(x)
@@ -625,6 +610,8 @@ def advanced_statistical_analysis(data: pd.DataFrame) -> dict[str, object]:
     Análisis estadístico avanzado: correlaciones, test ANOVA, distribuciones.
     """
     try:
+        from scipy.stats import pearsonr, spearmanr, f_oneway, skew, kurtosis
+
         # Correlaciones
         pearson_corr, pearson_pval = pearsonr(data["tickets"], data["tiempo"])
         spearman_corr, spearman_pval = spearmanr(data["tickets"], data["tiempo"])
@@ -644,7 +631,6 @@ def advanced_statistical_analysis(data: pd.DataFrame) -> dict[str, object]:
         } for idx, row in zona_stats.iterrows()}
 
         # Skewness y Kurtosis (forma de la distribución)
-        from scipy.stats import skew, kurtosis
         skewness = float(skew(data["tiempo"]))
         kurt = float(kurtosis(data["tiempo"]))
 
