@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import os
@@ -239,7 +240,7 @@ def ensure_directories() -> None:
 
 
 def save_bar_chart(data: pd.DataFrame) -> str:
-    """Genera la grafica de barras con tiempo promedio por dia."""
+    """Genera la grafica de barras con tiempo promedio por dia y devuelve Base64."""
     averages = data.groupby("dia", observed=False)["tiempo"].mean().reindex(DAYS)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -268,14 +269,15 @@ def save_bar_chart(data: pd.DataFrame) -> str:
         )
 
     fig.tight_layout()
-    output = PLOT_DIR / "tiempo_por_dia.png"
-    fig.savefig(output, dpi=160, bbox_inches="tight")
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    return str(output.relative_to(STATIC_DIR).as_posix())
+    buffer.seek(0)
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
 def save_scatter_chart(data: pd.DataFrame) -> str:
-    """Genera la dispersion tickets-tiempo y dibuja la tendencia lineal."""
+    """Genera la dispersion tickets-tiempo y dibuja la tendencia lineal como Base64."""
     fig, ax = plt.subplots(figsize=(10, 5))
 
     for day in DAYS:
@@ -302,14 +304,15 @@ def save_scatter_chart(data: pd.DataFrame) -> str:
     ax.legend(frameon=False, ncol=3)
 
     fig.tight_layout()
-    output = PLOT_DIR / "tickets_vs_tiempo.png"
-    fig.savefig(output, dpi=160, bbox_inches="tight")
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    return str(output.relative_to(STATIC_DIR).as_posix())
+    buffer.seek(0)
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
 def save_category_chart(data: pd.DataFrame) -> str:
-    """Genera la grafica de tiempo promedio por categoria de incidencia."""
+    """Genera la grafica de tiempo promedio por categoria de incidencia como Base64."""
     category_avg = data.groupby("categoria", observed=False)["tiempo"].mean().sort_values(ascending=False)
 
     fig, ax = plt.subplots(figsize=(10, 5))
@@ -338,14 +341,15 @@ def save_category_chart(data: pd.DataFrame) -> str:
         )
 
     fig.tight_layout()
-    output = PLOT_DIR / "tiempo_por_categoria.png"
-    fig.savefig(output, dpi=160, bbox_inches="tight")
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    return str(output.relative_to(STATIC_DIR).as_posix())
+    buffer.seek(0)
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
 def save_trend_chart(data: pd.DataFrame) -> str:
-    """Genera una serie temporal con promedio diario y media movil de 7 dias."""
+    """Genera una serie temporal con promedio diario y media movil de 7 dias como Base64."""
     trend = data.groupby("fecha", observed=False)["tiempo"].mean().reset_index()
     trend["fecha"] = pd.to_datetime(trend["fecha"])
     trend["rolling"] = trend["tiempo"].rolling(window=7, min_periods=1).mean()
@@ -362,14 +366,15 @@ def save_trend_chart(data: pd.DataFrame) -> str:
 
     fig.autofmt_xdate(rotation=25)
     fig.tight_layout()
-    output = PLOT_DIR / "tendencia_tiempo.png"
-    fig.savefig(output, dpi=160, bbox_inches="tight")
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    return str(output.relative_to(STATIC_DIR).as_posix())
+    buffer.seek(0)
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
 def save_map_chart(data: pd.DataFrame) -> str:
-    """Genera un mapa estatico simple con latitud, longitud y tiempo."""
+    """Genera un mapa estatico simple con latitud, longitud y tiempo como Base64."""
     fig, ax = plt.subplots(figsize=(10, 6))
     scatter = ax.scatter(
         data["lon"],
@@ -393,10 +398,11 @@ def save_map_chart(data: pd.DataFrame) -> str:
     fig.colorbar(scatter, ax=ax, label="Tiempo (min)")
 
     fig.tight_layout()
-    output = PLOT_DIR / "mapa_bogota.png"
-    fig.savefig(output, dpi=160, bbox_inches="tight")
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
     plt.close(fig)
-    return str(output.relative_to(STATIC_DIR).as_posix())
+    buffer.seek(0)
+    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
 
 
 # Dataset global: se carga una vez al iniciar la aplicacion y luego las rutas

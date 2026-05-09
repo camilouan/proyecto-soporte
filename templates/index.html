@@ -1048,7 +1048,7 @@
         <div class="chart-panels">
           <article class="chart-panel is-active" data-panel="bar">
             <h3>Tiempo promedio por día</h3>
-            <img src="{{ url_for('static', filename=charts.bar) }}" alt="Tiempo promedio por día">
+            <img src="{{ charts.bar }}" alt="Tiempo promedio por día">
             <div class="summary-grid">
               {% for day, value in avg_by_day.items() %}
               <div class="mini-card">
@@ -1062,7 +1062,7 @@
 
           <article class="chart-panel" data-panel="scatter">
             <h3>Relación entre tickets y tiempo</h3>
-            <img src="{{ url_for('static', filename=charts.scatter) }}" alt="Relación entre tickets y tiempo">
+            <img src="{{ charts.scatter }}" alt="Relación entre tickets y tiempo">
             <div class="summary-grid">
               <div class="mini-card">
                 <small>Correlación</small>
@@ -1079,7 +1079,7 @@
 
           <article class="chart-panel" data-panel="category">
             <h3>Tiempo promedio por categoría de incidencia</h3>
-            <img src="{{ url_for('static', filename=charts.category) }}" alt="Tiempo promedio por categoría">
+            <img src="{{ charts.category }}" alt="Tiempo promedio por categoría">
             <div class="summary-grid">
               {% for category, value in summary.category_summary.items() %}
               <div class="mini-card">
@@ -1093,7 +1093,7 @@
 
           <article class="chart-panel" data-panel="trend">
             <h3>Evolución temporal del tiempo de respuesta</h3>
-            <img src="{{ url_for('static', filename=charts.trend) }}" alt="Tendencia temporal del tiempo">
+            <img src="{{ charts.trend }}" alt="Tendencia temporal del tiempo">
             <div class="summary-grid">
               {% for priority, value in summary.priority_summary.items() %}
               <div class="mini-card">
