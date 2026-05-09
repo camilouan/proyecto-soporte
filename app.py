@@ -829,11 +829,34 @@ def home():
     quality_report = build_quality_report(active_data)
     model_diagnostics = build_model_diagnostics(active_data)
     
-    # IA & Machine Learning
-    prediction = predict_response_time(active_data)
-    anomalies = detect_anomalies(active_data, contamination=0.05)
-    advanced_stats = advanced_statistical_analysis(active_data)
-    recommendations = generate_recommendations(active_data, summary)
+    # IA & Machine Learning (llamadas seguras: capturamos excepciones para evitar 500)
+    prediction = {}
+    anomalies = {"count": 0, "items": []}
+    advanced_stats = {}
+    recommendations = []
+    try:
+        prediction = predict_response_time(active_data)
+    except Exception as e:
+        logger.exception("Error durante la predicción IA")
+        prediction = {"error": str(e)}
+
+    try:
+        anomalies = detect_anomalies(active_data, contamination=0.05)
+    except Exception as e:
+        logger.exception("Error durante la detección de anomalías")
+        anomalies = {"error": str(e)}
+
+    try:
+        advanced_stats = advanced_statistical_analysis(active_data)
+    except Exception as e:
+        logger.exception("Error durante el análisis estadístico avanzado")
+        advanced_stats = {"error": str(e)}
+
+    try:
+        recommendations = generate_recommendations(active_data, summary)
+    except Exception as e:
+        logger.exception("Error generando recomendaciones de IA")
+        recommendations = []
     
     charts = {
         "bar": save_bar_chart(active_data),
