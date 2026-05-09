@@ -731,7 +731,13 @@ def generate_recommendations(data: pd.DataFrame, summary: dict[str, object]) -> 
 
 
 
-    """Aplica filtros enviados por query string sobre el DataFrame base."""
+def apply_filters(data: pd.DataFrame, params: dict[str, str]) -> pd.DataFrame:
+    """Aplica filtros enviados por query string sobre el DataFrame base.
+
+    `params` es un diccionario con keys como `zona`, `prioridad`, `categoria`,
+    `canal`, `dia`, `fecha_inicio`, `fecha_fin` (todas strings). Devuelve un
+    DataFrame filtrado y reseteado en su índice.
+    """
     filtered = data.copy()
 
     zone = params.get("zona", "")
