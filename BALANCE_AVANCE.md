@@ -45,6 +45,22 @@
 - Cálculo de derivada e integral
 - Explicación interpretativa de resultados
 
+#### IA & Machine Learning (Integración Externa con scikit-learn + scipy)
+- **Predicción de tiempos:** Regresión Lineal entrenada en dataset para predecir tiempos según volumen
+- **Detección de anomalías:** Isolation Forest identifica registros inusuales (outliers estadísticos)
+- **Análisis estadístico avanzado:**
+  - Test ANOVA para diferencias significativas entre días
+  - Correlación de Pearson y Spearman
+  - Análisis de distribución (skewness, kurtosis)
+  - Estadísticas por zona
+- **Recomendaciones automáticas:** Sistema generador de insights basado en patrones detectados por ML
+- **APIs REST** para consumo de análisis en formato JSON:
+  - `/api/predictions` - Predicciones
+  - `/api/anomalies` - Anomalías
+  - `/api/analytics` - Análisis estadístico
+  - `/api/recommendations` - Recomendaciones
+  - `/api/full-ai-report` - Reporte completo integrado
+
 #### Calidad de Datos
 - Score de calidad integral
 - Detección de valores nulos, duplicados y outliers (método IQR)
@@ -95,6 +111,13 @@
 
 ### Testing
 - **unittest integrado:** Sin dependencias externas; permite CI/CD futuro
+
+### IA & Machine Learning
+- **scikit-learn para Isolation Forest:** Algoritmo no supervisado estándar para detección de anomalías sin necesidad de labeled data
+- **Regresión Lineal sklearn:** Más eficiente que numpy.polyfit para predicciones sobre nuevos datos
+- **scipy.stats para test ANOVA:** Valida diferencias significativas entre grupos sin suposiciones paramétricas estrictas
+- **APIs REST** separadas: Permiten consumo desde otros sistemas (frontend, mobile, terceros) sin acoplamiento
+- **Importación condicional:** Si scikit-learn no está disponible, el app aun funciona pero sin análisis avanzados
 
 ---
 
@@ -166,7 +189,35 @@
 
 ---
 
-## 6. Conclusión
+## 4. Funcionalidades Adicionales Implementadas
+
+### Más allá del mínimo requerido:
+1. **Mapa geográfico interactivo** con datos reales de Bogotá
+2. **Exportaciones en múltiples formatos** (CSV, Excel, PDF)
+3. **Modelo matemático** con explicación de derivada e integral
+4. **Sistema de calidad de datos** (detección de outliers, nulos, duplicados)
+5. **Tests automatizados** para CI/CD futuro
+6. **Logs estructurados** para monitoring en producción
+7. **Datos sintéticos realistas** generados con parámetros de dominio
+8. **IA & Machine Learning:**
+   - Predicción de tiempos con Regresión Lineal (scikit-learn)
+   - Detección de anomalías con Isolation Forest
+   - Análisis estadístico avanzado (ANOVA, correlaciones)
+   - Sistema automático de recomendaciones basadas en patrones
+   - 5 APIs REST para consumo de análisis en JSON
+
+---
+
+## 5. Próximos Pasos (Trabajo Futuro)
+
+- [ ] Modelos predictivos avanzados (XGBoost, Random Forest)
+- [ ] Clustering de patrones (K-means, DBSCAN)
+- [ ] Integración de base de datos PostgreSQL para escalabilidad
+- [ ] Dashboard en tiempo real con WebSockets
+- [ ] Autenticación y control de acceso por rol
+- [ ] Temas oscuros y responsividad mejorada
+- [ ] Métricas de SLA y alertas automáticas
+- [ ] Visualizaciones de IA (Feature Importance, Decision Trees)
 
 El proyecto ha alcanzado un estado **production-ready** en Render con todas las funcionalidades planeadas implementadas. La arquitectura es robusta, el código está documentado, y se han resuelto exitosamente los desafíos técnicos principales. La aplicación está lista para análisis de datos de soporte técnico y puede servir como base para expansiones futuras.
 
