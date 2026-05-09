@@ -16,6 +16,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 
+# Machine Learning e IA
+from sklearn.ensemble import IsolationForest
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import StandardScaler
+from scipy.stats import pearsonr, spearmanr, f_oneway
+
 
 # Rutas base del proyecto. Se calculan desde app.py para que funcionen igual
 # en local y en Render sin depender de la carpeta desde donde se ejecute Python.
@@ -516,7 +522,202 @@ def build_model_diagnostics(data: pd.DataFrame) -> dict[str, object]:
     }
 
 
-def apply_filters(data: pd.DataFrame, params: dict[str, str]) -> pd.DataFrame:
+# ============================================================================
+# IA & MACHINE LEARNING - Predicción, Anomalías y Análisis Estadístico
+# ============================================================================
+
+def predict_response_time(data: pd.DataFrame, ticket_values: list[int] | None = None) -> dict[str, object]:
+    """
+    Predice tiempo de respuesta usando regresión lineal entrenada en el dataset.
+    Retorna predicciones para diferentes volúmenes de tickets.
+    """
+    try:
+        x = data["tickets"].values.reshape(-1, 1)
+        y = data["tiempo"].values
+
+        model = LinearRegression()
+        model.fit(x, y)
+
+        if ticket_values is None:
+            ticket_values = [5, 10, 15, 20, 25]
+
+        predictions = []
+        for tickets in ticket_values:
+            pred_time = float(model.predict([[tickets]])[0])
+            predictions.append({
+                "tickets": tickets,
+                "predicted_time": round(max(0, pred_time), 1),
+                "confidence": "Alta" if abs(data["tickets"].mean() - tickets) < data["tickets"].std() * 2 else "Media"
+            })
+
+        return {
+            "model_trained": True,
+            "predictions": predictions,
+            "r_squared": round(float(model.score(x, y)), 3),
+            "coefficients": {
+                "slope": round(float(model.coef_[0]), 3),
+                "intercept": round(float(model.intercept_), 3)
+            }
+        }
+    except Exception as e:
+        logger.exception("Error en predicción de tiempos")
+        return {"model_trained": False, "error": str(e)}
+
+
+def detect_anomalies(data: pd.DataFrame, contamination: float = 0.05) -> dict[str, object]:
+    """
+    Detecta registros anómalos usando Isolation Forest (ML).
+    Identifica tickets con tiempos inusualmente altos/bajos respecto a su volumen.
+    """
+    try:
+        x = data[["tickets", "tiempo"]].values
+        scaler = StandardScaler()
+        x_scaled = scaler.fit_transform(x)
+
+        iso_forest = IsolationForest(contamination=contamination, random_state=42, n_estimators=100)
+        anomaly_labels = iso_forest.fit_predict(x_scaled)
+
+        anomalies = data[anomaly_labels == -1].copy()
+        normal = data[anomaly_labels == 1].copy()
+
+        anomaly_details = []
+        for _, row in anomalies.iterrows():
+            anomaly_details.append({
+                "ticket_id": str(row.get("ticket_id", "N/A")),
+                "tickets": int(row["tickets"]),
+                "tiempo": int(row["tiempo"]),
+                "zona": str(row.get("zona", "N/A")),
+                "prioridad": str(row.get("prioridad", "N/A")),
+                "reason": "Tiempo inusualmente alto" if row["tiempo"] > normal["tiempo"].mean() + normal["tiempo"].std() else "Tiempo inusualmente bajo"
+            })
+
+        return {
+            "anomalies_detected": int(len(anomalies)),
+            "total_records": int(len(data)),
+            "anomaly_percentage": round((len(anomalies) / len(data)) * 100, 2),
+            "anomaly_details": sorted(anomaly_details[:10], key=lambda x: x["tickets"], reverse=True),
+            "statistics": {
+                "mean_anomaly_time": round(float(anomalies["tiempo"].mean()), 1) if len(anomalies) > 0 else 0,
+                "mean_normal_time": round(float(normal["tiempo"].mean()), 1),
+                "deviation": round(float(anomalies["tiempo"].mean() - normal["tiempo"].mean()), 1) if len(anomalies) > 0 else 0
+            }
+        }
+    except Exception as e:
+        logger.exception("Error en detección de anomalías")
+        return {"anomalies_detected": 0, "error": str(e)}
+
+
+def advanced_statistical_analysis(data: pd.DataFrame) -> dict[str, object]:
+    """
+    Análisis estadístico avanzado: correlaciones, test ANOVA, distribuciones.
+    """
+    try:
+        # Correlaciones
+        pearson_corr, pearson_pval = pearsonr(data["tickets"], data["tiempo"])
+        spearman_corr, spearman_pval = spearmanr(data["tickets"], data["tiempo"])
+
+        # ANOVA: ¿Hay diferencias significativas entre días?
+        groups_by_day = [group["tiempo"].values for name, group in data.groupby("dia", observed=False)]
+        f_stat, anova_pval = f_oneway(*groups_by_day) if len(groups_by_day) > 1 else (0, 1)
+
+        # Distribución por zonas
+        zona_stats = data.groupby("zona", observed=False)["tiempo"].agg(["mean", "std", "min", "max", "count"])
+        zona_dict = {str(idx): {
+            "mean": round(float(row["mean"]), 1),
+            "std": round(float(row["std"]), 1),
+            "min": int(row["min"]),
+            "max": int(row["max"]),
+            "count": int(row["count"])
+        } for idx, row in zona_stats.iterrows()}
+
+        # Skewness y Kurtosis (forma de la distribución)
+        from scipy.stats import skew, kurtosis
+        skewness = float(skew(data["tiempo"]))
+        kurt = float(kurtosis(data["tiempo"]))
+
+        return {
+            "correlations": {
+                "pearson": {"coefficient": round(pearson_corr, 3), "p_value": round(pearson_pval, 5)},
+                "spearman": {"coefficient": round(spearman_corr, 3), "p_value": round(spearman_pval, 5)}
+            },
+            "anova_test": {
+                "f_statistic": round(f_stat, 3),
+                "p_value": round(anova_pval, 5),
+                "significant": anova_pval < 0.05,
+                "interpretation": "Hay diferencias significativas en tiempo por día." if anova_pval < 0.05 else "No hay diferencias significativas por día."
+            },
+            "distribution_shape": {
+                "skewness": round(skewness, 3),
+                "kurtosis": round(kurt, 3),
+                "shape": "Right-skewed" if skewness > 0.5 else ("Left-skewed" if skewness < -0.5 else "Symmetric")
+            },
+            "zone_statistics": zona_dict,
+            "sample_size": int(len(data))
+        }
+    except Exception as e:
+        logger.exception("Error en análisis estadístico")
+        return {"error": str(e)}
+
+
+def generate_recommendations(data: pd.DataFrame, summary: dict[str, object]) -> list[dict[str, str]]:
+    """
+    Genera recomendaciones automáticas basadas en patrones de IA detectados.
+    """
+    recommendations = []
+
+    # Recomendación 1: Carga por zona
+    zone_avg = data.groupby("zona", observed=False)["tiempo"].mean()
+    slowest_zone = zone_avg.idxmax()
+    slowest_time = round(float(zone_avg.max()), 1)
+    recommendations.append({
+        "title": "Zona crítica detectada",
+        "description": f"La zona {slowest_zone} tiene el tiempo promedio más alto ({slowest_time} min). Considere recursos adicionales.",
+        "priority": "Alta"
+    })
+
+    # Recomendación 2: Ticket para día específico
+    day_avg = data.groupby("dia", observed=False)["tiempo"].mean()
+    busiest_day = day_avg.idxmax()
+    recommendations.append({
+        "title": "Pico de demanda identificado",
+        "description": f"El {busiest_day} es el día más cargado. Aumente personal este día.",
+        "priority": "Media"
+    })
+
+    # Recomendación 3: Correlación fuerte
+    if abs(float(summary.get("corr", 0))) > 0.7:
+        recommendations.append({
+            "title": "Correlación fuerte detectada",
+            "description": "El volumen de tickets es el predictor principal del tiempo. Optimice velocidad de procesamiento.",
+            "priority": "Alta"
+        })
+
+    # Recomendación 4: Prioridad vs Tiempo
+    if "prioridad" in data.columns:
+        priority_time = data.groupby("prioridad", observed=False)["tiempo"].mean()
+        if len(priority_time) > 0:
+            high_priority_time = priority_time.get("Alta", 0)
+            if high_priority_time > 0:
+                recommendations.append({
+                    "title": "Tickets de alta prioridad",
+                    "description": f"Los tickets 'Alta' demoran {high_priority_time:.1f} min en promedio. Revise SLA.",
+                    "priority": "Media"
+                })
+
+    # Recomendación 5: Anomalías
+    anomalies_report = detect_anomalies(data, contamination=0.05)
+    if anomalies_report.get("anomalies_detected", 0) > 0:
+        anomaly_pct = anomalies_report.get("anomaly_percentage", 0)
+        recommendations.append({
+            "title": "Registros anómalos detectados",
+            "description": f"{anomaly_pct}% de registros tienen patrones inusionales. Investigue casos extremos.",
+            "priority": "Baja"
+        })
+
+    return recommendations[:5]  # Máximo 5 recomendaciones
+
+
+
     """Aplica filtros enviados por query string sobre el DataFrame base."""
     filtered = data.copy()
 
@@ -627,6 +828,13 @@ def home():
     map_data = build_map_sample(active_data)
     quality_report = build_quality_report(active_data)
     model_diagnostics = build_model_diagnostics(active_data)
+    
+    # IA & Machine Learning
+    prediction = predict_response_time(active_data)
+    anomalies = detect_anomalies(active_data, contamination=0.05)
+    advanced_stats = advanced_statistical_analysis(active_data)
+    recommendations = generate_recommendations(active_data, summary)
+    
     charts = {
         "bar": save_bar_chart(active_data),
         "scatter": save_scatter_chart(active_data),
@@ -732,6 +940,11 @@ def home():
         insights=insights,
         model=model,
         charts=charts,
+        # IA & ML
+        prediction=prediction,
+        anomalies=anomalies,
+        advanced_stats=advanced_stats,
+        recommendations=recommendations,
     )
 
 
@@ -834,6 +1047,70 @@ def health():
     return {"status": "ok"}
 
 
-if __name__ == "__main__":
+# ============================================================================
+# API ENDPOINTS - IA & Machine Learning (JSON)
+# ============================================================================
+
+@app.route("/api/predictions")
+def api_predictions():
+    """API: Predicciones de tiempo basadas en volumen de tickets (ML)."""
+    filtered, _, _, _ = _resolve_filtered_data()
+    
+    # Parámetro opcional: ticket_count
+    try:
+        custom_tickets = request.args.get("tickets")
+        ticket_values = None
+        if custom_tickets:
+            ticket_values = [int(t) for t in custom_tickets.split(",")]
+    except (ValueError, TypeError):
+        ticket_values = None
+    
+    prediction = predict_response_time(filtered, ticket_values)
+    return prediction
+
+
+@app.route("/api/anomalies")
+def api_anomalies():
+    """API: Detección de anomalías en registros de tickets (Isolation Forest)."""
+    filtered, _, _, _ = _resolve_filtered_data()
+    anomalies = detect_anomalies(filtered, contamination=0.05)
+    return anomalies
+
+
+@app.route("/api/analytics")
+def api_analytics():
+    """API: Análisis estadístico avanzado con test ANOVA y correlaciones."""
+    filtered, _, _, _ = _resolve_filtered_data()
+    stats = advanced_statistical_analysis(filtered)
+    return stats
+
+
+@app.route("/api/recommendations")
+def api_recommendations():
+    """API: Recomendaciones automáticas basadas en IA."""
+    filtered, _, _, _ = _resolve_filtered_data()
+    summary = build_summary(filtered)
+    recommendations = generate_recommendations(filtered, summary)
+    return {"recommendations": recommendations, "count": len(recommendations)}
+
+
+@app.route("/api/full-ai-report")
+def api_full_ai_report():
+    """API: Reporte completo de IA (predicciones + anomalías + estadísticas + recomendaciones)."""
+    filtered, _, _, _ = _resolve_filtered_data()
+    summary = build_summary(filtered)
+    
+    report = {
+        "timestamp": date.today().isoformat(),
+        "dataset_size": len(filtered),
+        "predictions": predict_response_time(filtered),
+        "anomalies": detect_anomalies(filtered, contamination=0.05),
+        "analytics": advanced_statistical_analysis(filtered),
+        "recommendations": generate_recommendations(filtered, summary),
+    }
+    return report
+
+
+
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
