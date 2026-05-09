@@ -1508,7 +1508,6 @@
     const buttons = document.querySelectorAll('.chart-switcher button');
     const panels = document.querySelectorAll('.chart-panel');
     const tickets = {{ map_data | tojson }};
-    const allRows = {{ data | tojson }};
     const bogotaGeoJsonUrl = 'https://raw.githubusercontent.com/codeforamerica/click_that_hood/master/public/data/bogota.geojson';
     let bogotaMap;
     let bogotaLayer;
@@ -1538,7 +1537,7 @@
     function getZoneAverages() {
       // Agrupa todos los registros por localidad y calcula su tiempo promedio.
       const grouped = {};
-      allRows.forEach((ticket) => {
+      tickets.forEach((ticket) => {
         const zoneName = normalizeText(ticket.zona);
         const key = zoneAliases[zoneName] || zoneName;
         if (!grouped[key]) {
