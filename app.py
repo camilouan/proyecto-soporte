@@ -16,11 +16,24 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 
-# Machine Learning e IA
-from sklearn.ensemble import IsolationForest
-from sklearn.linear_model import LinearRegression
-from sklearn.preprocessing import StandardScaler
-from scipy.stats import pearsonr, spearmanr, f_oneway
+# Machine Learning e IA (imports opcionales para entornos donde no estén instaladas)
+SKLEARN_AVAILABLE = True
+SCIPY_AVAILABLE = True
+try:
+    from sklearn.ensemble import IsolationForest
+    from sklearn.linear_model import LinearRegression
+    from sklearn.preprocessing import StandardScaler
+except Exception:
+    SKLEARN_AVAILABLE = False
+    IsolationForest = None
+    LinearRegression = None
+    StandardScaler = None
+
+try:
+    from scipy.stats import pearsonr, spearmanr, f_oneway
+except Exception:
+    SCIPY_AVAILABLE = False
+    pearsonr = spearmanr = f_oneway = None
 
 
 # Rutas base del proyecto. Se calculan desde app.py para que funcionen igual
