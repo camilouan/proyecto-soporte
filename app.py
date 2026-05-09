@@ -7,13 +7,10 @@ import os
 import unicodedata
 from datetime import date, timedelta
 from pathlib import Path
+from xml.sax.saxutils import escape as xml_escape
 
-import matplotlib
 import numpy as np
 import pandas as pd
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from flask import Flask, flash, redirect, render_template, request, send_file, url_for
 
 # Rutas base del proyecto. Se calculan desde app.py para que funcionen igual
@@ -238,170 +235,264 @@ def ensure_directories() -> None:
     PLOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def save_bar_chart(data: pd.DataFrame) -> str:
-    """Genera la grafica de barras con tiempo promedio por dia y devuelve Base64."""
-    averages = data.groupby("dia", observed=False)["tiempo"].mean().reindex(DAYS)
+def _svg_data_uri(svg: str) -> str:
+    """Convierte un SVG en una data URI compacta para usarlo en <img>."""
+    return f"data:image/svg+xml;base64,{base64.b64encode(svg.encode('utf-8')).decode('utf-8')}"
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.bar(
-        averages.index,
-        averages.values,
-        color=[DAY_COLORS[day] for day in averages.index],
-        edgecolor="#1f2937",
-        linewidth=0.8,
+
+def _build_svg_bar_chart(title: str, labels: list[str], values: list[float], colors: list[str], x_label: str, y_label: str) -> str:
+    width = 900
+    height = 460
+    margin_left = 72
+    margin_right = 24
+    margin_top = 46
+    margin_bottom = 82
+    plot_width = width - margin_left - margin_right
+    plot_height = height - margin_top - margin_bottom
+    max_value = max(values) if values else 1
+    max_value = max(max_value, 1)
+    bar_width = plot_width / max(len(values), 1)
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        f'<text x="{margin_left}" y="28" font-size="22" font-weight="700" fill="#111827">{xml_escape(title)}</text>',
+        f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<line x1="{margin_left}" y1="{margin_top + plot_height}" x2="{margin_left + plot_width}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<text x="18" y="{margin_top + plot_height / 2}" font-size="14" fill="#374151" transform="rotate(-90 18,{margin_top + plot_height / 2})">{xml_escape(y_label)}</text>',
+        f'<text x="{margin_left + plot_width / 2}" y="{height - 18}" font-size="14" fill="#374151" text-anchor="middle">{xml_escape(x_label)}</text>',
+    ]
+
+    for idx, (label, value, color) in enumerate(zip(labels, values, colors, strict=True)):
+        bar_height = (value / max_value) * (plot_height - 24)
+        x = margin_left + idx * bar_width + 12
+        y = margin_top + plot_height - bar_height
+        parts.append(f'<rect x="{x:.1f}" y="{y:.1f}" width="{max(bar_width - 24, 18):.1f}" height="{bar_height:.1f}" rx="8" fill="{color}"/>')
+        parts.append(f'<text x="{x + max(bar_width - 24, 18) / 2:.1f}" y="{y - 8:.1f}" font-size="12" text-anchor="middle" fill="#111827">{value:.1f}</text>')
+        parts.append(f'<text x="{x + max(bar_width - 24, 18) / 2:.1f}" y="{height - 34}" font-size="12" text-anchor="middle" fill="#475569">{xml_escape(label)}</text>')
+
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
+def _build_svg_scatter_chart(title: str, x_values: list[float], y_values: list[float], x_label: str, y_label: str, points: list[dict[str, object]]) -> str:
+    width = 900
+    height = 460
+    margin_left = 72
+    margin_right = 24
+    margin_top = 46
+    margin_bottom = 62
+    plot_width = width - margin_left - margin_right
+    plot_height = height - margin_top - margin_bottom
+    x_min = min(x_values) if x_values else 0
+    x_max = max(x_values) if x_values else 1
+    y_min = min(y_values) if y_values else 0
+    y_max = max(y_values) if y_values else 1
+    x_span = max(x_max - x_min, 1)
+    y_span = max(y_max - y_min, 1)
+
+    def sx(x: float) -> float:
+        return margin_left + ((x - x_min) / x_span) * plot_width
+
+    def sy(y: float) -> float:
+        return margin_top + plot_height - ((y - y_min) / y_span) * plot_height
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        f'<text x="{margin_left}" y="28" font-size="22" font-weight="700" fill="#111827">{xml_escape(title)}</text>',
+        f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<line x1="{margin_left}" y1="{margin_top + plot_height}" x2="{margin_left + plot_width}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<text x="18" y="{margin_top + plot_height / 2}" font-size="14" fill="#374151" transform="rotate(-90 18,{margin_top + plot_height / 2})">{xml_escape(y_label)}</text>',
+        f'<text x="{margin_left + plot_width / 2}" y="{height - 18}" font-size="14" fill="#374151" text-anchor="middle">{xml_escape(x_label)}</text>',
+    ]
+
+    # Línea de tendencia simple
+    slope, intercept = np.polyfit(x_values, y_values, 1)
+    x1 = x_min
+    x2 = x_max
+    parts.append(
+        f'<line x1="{sx(x1):.1f}" y1="{sy(slope * x1 + intercept):.1f}" x2="{sx(x2):.1f}" y2="{sy(slope * x2 + intercept):.1f}" stroke="#111827" stroke-width="2.5" opacity="0.8"/>'
     )
 
-    ax.set_title("Tiempo promedio por día", fontsize=15, fontweight="bold")
-    ax.set_xlabel("Día")
-    ax.set_ylabel("Tiempo promedio (min)")
-    ax.grid(axis="y", alpha=0.2)
-    ax.set_axisbelow(True)
-
-    for bar, value in zip(bars, averages.values, strict=True):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.5,
-            f"{value:.1f}",
-            ha="center",
-            va="bottom",
-            fontsize=10,
+    for point in points:
+        parts.append(
+            f'<circle cx="{sx(float(point["x"])): .1f}" cy="{sy(float(point["y"])): .1f}" r="4.2" fill="{point["color"]}" stroke="#ffffff" stroke-width="0.8" opacity="0.92"/>'
         )
 
-    fig.tight_layout()
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    buffer.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
+def _build_svg_line_chart(title: str, labels: list[str], values: list[float], line_color: str, x_label: str, y_label: str) -> str:
+    width = 900
+    height = 460
+    margin_left = 72
+    margin_right = 24
+    margin_top = 46
+    margin_bottom = 72
+    plot_width = width - margin_left - margin_right
+    plot_height = height - margin_top - margin_bottom
+    max_value = max(values) if values else 1
+    max_value = max(max_value, 1)
+    x_step = plot_width / max(len(values) - 1, 1)
+
+    points = []
+    for idx, value in enumerate(values):
+        x = margin_left + idx * x_step
+        y = margin_top + plot_height - ((value / max_value) * (plot_height - 8))
+        points.append(f'{x:.1f},{y:.1f}')
+
+    polyline = ' '.join(points)
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        f'<text x="{margin_left}" y="28" font-size="22" font-weight="700" fill="#111827">{xml_escape(title)}</text>',
+        f'<line x1="{margin_left}" y1="{margin_top}" x2="{margin_left}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<line x1="{margin_left}" y1="{margin_top + plot_height}" x2="{margin_left + plot_width}" y2="{margin_top + plot_height}" stroke="#94a3b8" stroke-width="1.2"/>',
+        f'<text x="18" y="{margin_top + plot_height / 2}" font-size="14" fill="#374151" transform="rotate(-90 18,{margin_top + plot_height / 2})">{xml_escape(y_label)}</text>',
+        f'<text x="{margin_left + plot_width / 2}" y="{height - 18}" font-size="14" fill="#374151" text-anchor="middle">{xml_escape(x_label)}</text>',
+    ]
+
+    parts.append(f'<polyline points="{polyline}" fill="none" stroke="{line_color}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>')
+    for idx, (label, value) in enumerate(zip(labels, values, strict=True)):
+        x = margin_left + idx * x_step
+        y = margin_top + plot_height - ((value / max_value) * (plot_height - 8))
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{line_color}" stroke="#ffffff" stroke-width="0.8"/>')
+        parts.append(f'<text x="{x:.1f}" y="{height - 36}" font-size="12" text-anchor="middle" fill="#475569">{xml_escape(label)}</text>')
+        parts.append(f'<text x="{x:.1f}" y="{y - 8:.1f}" font-size="12" text-anchor="middle" fill="#111827">{value:.1f}</text>')
+
+    parts.append('</svg>')
+    return ''.join(parts)
+
+
+def save_bar_chart(data: pd.DataFrame) -> str:
+    """Genera la grafica de barras con tiempo promedio por dia y devuelve Base64 SVG."""
+    averages = data.groupby("dia", observed=False)["tiempo"].mean().reindex(DAYS).round(1)
+    svg = _build_svg_bar_chart(
+        "Tiempo promedio por día",
+        list(averages.index),
+        [float(value) for value in averages.values],
+        [DAY_COLORS[day] for day in averages.index],
+        "Día",
+        "Tiempo promedio (min)",
+    )
+    return _svg_data_uri(svg)
 
 
 def save_scatter_chart(data: pd.DataFrame) -> str:
-    """Genera la dispersion tickets-tiempo y dibuja la tendencia lineal como Base64."""
-    fig, ax = plt.subplots(figsize=(10, 5))
+    """Genera la dispersion tickets-tiempo y dibuja la tendencia lineal como Base64 SVG."""
+    sampled = data.sort_values(["tickets", "tiempo"]).groupby("dia", observed=False, group_keys=False).head(30)
+    points = []
+    for _, row in sampled.iterrows():
+        points.append({"x": float(row["tickets"]), "y": float(row["tiempo"]), "color": DAY_COLORS.get(str(row["dia"]), "#64748b")})
 
-    for day in DAYS:
-        subset = data[data["dia"] == day]
-        ax.scatter(
-            subset["tickets"],
-            subset["tiempo"],
-            s=55,
-            alpha=0.85,
-            label=day,
-            color=DAY_COLORS[day],
-            edgecolors="white",
-            linewidths=0.5,
-        )
-
-    slope, intercept = np.polyfit(data["tickets"], data["tiempo"], 1)
-    x_line = np.linspace(data["tickets"].min(), data["tickets"].max(), 100)
-    ax.plot(x_line, slope * x_line + intercept, color="#111827", linewidth=2.2, label="Tendencia")
-
-    ax.set_title("Relación entre tickets y tiempo", fontsize=15, fontweight="bold")
-    ax.set_xlabel("Tickets")
-    ax.set_ylabel("Tiempo (min)")
-    ax.grid(alpha=0.2)
-    ax.legend(frameon=False, ncol=3)
-
-    fig.tight_layout()
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    buffer.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    svg = _build_svg_scatter_chart(
+        "Relación entre tickets y tiempo",
+        [float(value) for value in data["tickets"].tolist()],
+        [float(value) for value in data["tiempo"].tolist()],
+        "Tickets",
+        "Tiempo (min)",
+        points,
+    )
+    return _svg_data_uri(svg)
 
 
 def save_category_chart(data: pd.DataFrame) -> str:
-    """Genera la grafica de tiempo promedio por categoria de incidencia como Base64."""
-    category_avg = data.groupby("categoria", observed=False)["tiempo"].mean().sort_values(ascending=False)
-
-    fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.bar(
-        category_avg.index,
-        category_avg.values,
-        color="#5DADE2",
-        edgecolor="#1f2937",
-        linewidth=0.8,
+    """Genera la grafica de tiempo promedio por categoria de incidencia como Base64 SVG."""
+    category_avg = data.groupby("categoria", observed=False)["tiempo"].mean().sort_values(ascending=False).round(1)
+    svg = _build_svg_bar_chart(
+        "Tiempo promedio por categoría",
+        list(category_avg.index),
+        [float(value) for value in category_avg.values],
+        ["#5DADE2"] * len(category_avg),
+        "Categoría",
+        "Tiempo promedio (min)",
     )
-
-    ax.set_title("Tiempo promedio por categoría", fontsize=15, fontweight="bold")
-    ax.set_xlabel("Categoría")
-    ax.set_ylabel("Tiempo promedio (min)")
-    ax.grid(axis="y", alpha=0.2)
-    ax.set_axisbelow(True)
-
-    for bar, value in zip(bars, category_avg.values, strict=True):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 0.4,
-            f"{value:.1f}",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-        )
-
-    fig.tight_layout()
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    buffer.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    return _svg_data_uri(svg)
 
 
 def save_trend_chart(data: pd.DataFrame) -> str:
-    """Genera una serie temporal con promedio diario y media movil de 7 dias como Base64."""
+    """Genera una serie temporal con promedio diario y media movil de 7 dias como Base64 SVG."""
     trend = data.groupby("fecha", observed=False)["tiempo"].mean().reset_index()
     trend["fecha"] = pd.to_datetime(trend["fecha"])
     trend["rolling"] = trend["tiempo"].rolling(window=7, min_periods=1).mean()
 
-    fig, ax = plt.subplots(figsize=(11, 5))
-    ax.plot(trend["fecha"], trend["tiempo"], color="#94a3b8", linewidth=1.6, alpha=0.8, label="Promedio diario")
-    ax.plot(trend["fecha"], trend["rolling"], color="#10b981", linewidth=2.4, label="Tendencia 7 días")
-
-    ax.set_title("Tendencia temporal del tiempo de atención", fontsize=15, fontweight="bold")
-    ax.set_xlabel("Fecha")
-    ax.set_ylabel("Tiempo promedio (min)")
-    ax.grid(alpha=0.2)
-    ax.legend(frameon=False)
-
-    fig.autofmt_xdate(rotation=25)
-    fig.tight_layout()
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    buffer.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    labels = [str(fecha.date()) for fecha in trend["fecha"].tolist()[-8:]] if len(trend) > 8 else [str(fecha.date()) for fecha in trend["fecha"].tolist()]
+    values = trend["rolling"].tolist()[-8:] if len(trend) > 8 else trend["rolling"].tolist()
+    svg = _build_svg_line_chart(
+        "Tendencia temporal del tiempo de atención",
+        labels,
+        [float(value) for value in values],
+        "#10b981",
+        "Fecha",
+        "Tiempo promedio (min)",
+    )
+    return _svg_data_uri(svg)
 
 
 def save_map_chart(data: pd.DataFrame) -> str:
-    """Genera un mapa estatico simple con latitud, longitud y tiempo como Base64."""
-    fig, ax = plt.subplots(figsize=(10, 6))
-    scatter = ax.scatter(
-        data["lon"],
-        data["lat"],
-        c=data["tiempo"],
-        cmap="viridis",
-        s=80,
-        alpha=0.9,
-        edgecolors="white",
-        linewidths=0.6,
-    )
+    """Genera un mapa estatico simple con latitud, longitud y tiempo como Base64 SVG."""
+    if data.empty:
+        return _svg_data_uri('<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500"><rect width="100%" height="100%" fill="#fff"/><text x="24" y="40" font-size="22" fill="#111827">Sin datos</text></svg>')
+
+    width = 900
+    height = 520
+    margin_left = 60
+    margin_right = 28
+    margin_top = 52
+    margin_bottom = 50
+    plot_width = width - margin_left - margin_right
+    plot_height = height - margin_top - margin_bottom
+    lon_min, lon_max = float(data["lon"].min()), float(data["lon"].max())
+    lat_min, lat_max = float(data["lat"].min()), float(data["lat"].max())
+    lon_span = max(lon_max - lon_min, 0.001)
+    lat_span = max(lat_max - lat_min, 0.001)
+    temp_min, temp_max = float(data["tiempo"].min()), float(data["tiempo"].max())
+    temp_span = max(temp_max - temp_min, 1)
+
+    def x_for(lon: float) -> float:
+        return margin_left + ((lon - lon_min) / lon_span) * plot_width
+
+    def y_for(lat: float) -> float:
+        return margin_top + plot_height - ((lat - lat_min) / lat_span) * plot_height
+
+    def color_for(temp: float) -> str:
+        ratio = (temp - temp_min) / temp_span
+        if ratio >= 0.8:
+            return "#b4233f"
+        if ratio >= 0.6:
+            return "#e25555"
+        if ratio >= 0.4:
+            return "#f59e0b"
+        if ratio >= 0.2:
+            return "#84cc16"
+        return "#22c55e"
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
+        '<rect width="100%" height="100%" fill="#ffffff"/>',
+        '<text x="24" y="34" font-size="22" font-weight="700" fill="#111827">Mapa simulado de Bogotá por tiempo de atención</text>',
+        f'<rect x="{margin_left}" y="{margin_top}" width="{plot_width}" height="{plot_height}" fill="#f8fafc" stroke="#cbd5e1" stroke-width="1.2" rx="12"/>',
+    ]
 
     for zone in ZONES:
-        sample = data[data["zona"] == zone].iloc[0]
-        ax.text(sample["lon"] + 0.002, sample["lat"] + 0.002, zone, fontsize=9, weight="bold")
+        subset = data[data["zona"] == zone]
+        if subset.empty:
+            continue
+        sample = subset.iloc[0]
+        parts.append(f'<text x="{x_for(float(sample["lon"])) + 8:.1f}" y="{y_for(float(sample["lat"])) - 8:.1f}" font-size="12" font-weight="700" fill="#0f172a">{xml_escape(zone)}</text>')
 
-    ax.set_title("Mapa simulado de Bogotá por tiempo de atención", fontsize=15, fontweight="bold")
-    ax.set_xlabel("Longitud")
-    ax.set_ylabel("Latitud")
-    ax.grid(alpha=0.15)
-    fig.colorbar(scatter, ax=ax, label="Tiempo (min)")
+    for _, row in data.iterrows():
+        x = x_for(float(row["lon"]))
+        y = y_for(float(row["lat"]))
+        radius = 3.5 + (float(row["tiempo"]) - temp_min) / temp_span * 4
+        parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" fill="{color_for(float(row["tiempo"]))}" opacity="0.88" stroke="#ffffff" stroke-width="0.6"/>')
 
-    fig.tight_layout()
-    buffer = io.BytesIO()
-    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight")
-    plt.close(fig)
-    buffer.seek(0)
-    return f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
+    parts.append(f'<text x="{width / 2:.1f}" y="{height - 18}" font-size="14" text-anchor="middle" fill="#374151">Longitud</text>')
+    parts.append(f'<text x="18" y="{margin_top + plot_height / 2:.1f}" font-size="14" fill="#374151" transform="rotate(-90 18,{margin_top + plot_height / 2:.1f})">Latitud</text>')
+    parts.append('</svg>')
+    return _svg_data_uri(''.join(parts))
 
 
 # Dataset global: se carga una vez al iniciar la aplicacion y luego las rutas
